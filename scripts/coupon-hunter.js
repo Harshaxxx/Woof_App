@@ -56,10 +56,14 @@ async function hunt() {
             // Randomize cost, but make Chewy (first one) free for testing
             const isFree = target.name === 'Chewy';
 
+            // Use generic "likely to work" codes for the demo
+            const GENERIC_CODES = ['WELCOME30', 'SAVE20', 'PETLOVER25', 'EXTRA10', 'SHIPFREE'];
+            const randomCode = GENERIC_CODES[Math.floor(Math.random() * GENERIC_CODES.length)];
+
             const foundCoupon = {
                 store_name: target.name,
                 description: `Exclusive ${target.name} Deal found by Agent`,
-                code: (target.name.substring(0, 3) + Math.floor(1000 + Math.random() * 9000)).toUpperCase(),
+                code: randomCode,
                 discount_value: `${Math.floor(10 + Math.random() * 40)}% OFF`,
                 bones_cost: isFree ? 0 : Math.floor(50 + Math.random() * 100),
                 source_url: target.url,
