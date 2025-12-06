@@ -17,13 +17,18 @@ const TARGETS = [
     {
         name: 'Chewy',
         url: 'https://www.chewy.com/deals',
-        selector: '.kib-product-card', // Generic selector, might need adjustment
-        extract: (el) => ({
-            description: el.querySelector('.kib-product-title')?.innerText || 'Deal',
-            discount: el.querySelector('.kib-product-price')?.innerText || 'Discount',
-        })
+        selector: '.kib-product-card',
     },
-    // Add more targets as needed
+    {
+        name: 'Petco',
+        url: 'https://www.petco.com/shop/en/petcostore/c/sale',
+        selector: '.product-card',
+    },
+    {
+        name: 'PetSmart',
+        url: 'https://www.petsmart.com/sale/',
+        selector: '.product-grid',
+    }
 ];
 
 async function hunt() {
@@ -48,12 +53,15 @@ async function hunt() {
             // For now, let's just mock finding a "Hidden" coupon since scraping real sites is flaky without specific selectors
             // In a real implementation, we would use page.evaluate() to find elements
 
+            // Randomize cost, but make Chewy (first one) free for testing
+            const isFree = target.name === 'Chewy';
+
             const foundCoupon = {
                 store_name: target.name,
                 description: `Exclusive ${target.name} Deal found by Agent`,
                 code: (target.name.substring(0, 3) + Math.floor(1000 + Math.random() * 9000)).toUpperCase(),
                 discount_value: `${Math.floor(10 + Math.random() * 40)}% OFF`,
-                bones_cost: Math.floor(50 + Math.random() * 100),
+                bones_cost: isFree ? 0 : Math.floor(50 + Math.random() * 100),
                 source_url: target.url,
                 expires_at: new Date(Date.now() + 86400000 * 3).toISOString(), // 3 days
                 is_redeemed: false
