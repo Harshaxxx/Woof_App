@@ -28,7 +28,10 @@ const TARGETS = [
 
 async function hunt() {
     console.log('Starting Coupon Hunt... 🕵️‍♂️');
-    const browser = await puppeteer.launch({ headless: 'new' });
+    const browser = await puppeteer.launch({
+        headless: 'new',
+        args: ['--no-sandbox', '--disable-setuid-sandbox']
+    });
     const page = await browser.newPage();
 
     // Set a realistic User-Agent
