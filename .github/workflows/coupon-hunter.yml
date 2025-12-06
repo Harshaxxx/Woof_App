@@ -1,0 +1,26 @@
+name: Coupon Hunter 🕵️‍♂️
+
+on:
+  schedule:
+    - cron: '0 */3 * * *' # Run every 3 hours
+  workflow_dispatch: # Allow manual trigger
+
+jobs:
+  hunt:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v3
+      
+      - name: Setup Node.js
+        uses: actions/setup-node@v3
+        with:
+          node-version: '18'
+          
+      - name: Install Dependencies
+        run: npm ci
+        
+      - name: Run Scraper
+        run: node scripts/coupon-hunter.js
+        env:
+          SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
+          SUPABASE_SERVICE_KEY: ${{ secrets.SUPABASE_SERVICE_KEY }}
