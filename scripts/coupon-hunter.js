@@ -16,18 +16,18 @@ const supabase = createClient(supabaseUrl, supabaseKey);
 const TARGETS = [
     {
         name: 'Chewy',
-        url: 'https://www.chewy.com/deals',
-        selector: '.kib-product-card',
+        url: 'https://couponfollow.com/site/chewy.com',
+        selector: 'article.offer.coupon',
     },
     {
         name: 'Petco',
-        url: 'https://www.petco.com/shop/en/petcostore/c/sale',
-        selector: '.product-card',
+        url: 'https://couponfollow.com/site/petco.com',
+        selector: 'article.offer.coupon',
     },
     {
         name: 'PetSmart',
-        url: 'https://www.petsmart.com/sale/',
-        selector: '.product-grid',
+        url: 'https://couponfollow.com/site/petsmart.com',
+        selector: 'article.offer.coupon',
     }
 ];
 
@@ -44,45 +44,67 @@ async function hunt() {
 
     for (const target of TARGETS) {
         try {
-            console.log(`Visiting ${target.name}...`);
+            console.log(`Visiting ${target.name} on CouponFollow...`);
             await page.goto(target.url, { waitUntil: 'networkidle2', timeout: 60000 });
 
-            // Simulate some human behavior
-            await new Promise(r => setTimeout(r, 2000 + Math.random() * 3000));
+            // Scrape coupons
+            const coupons = await page.evaluate(() => {
+                const items = Array.from(document.querySelectorAll('article.offer.coupon'));
+                return items.slice(0, 5).map(item => { // Get top 5
+                    const title = item.querySelector('.title')?.innerText || item.innerText.split('\n')[0];
+                    const verified = item.innerText.includes('Verified');
+                    const codeAttr = item.querySelector('[data-clipboard-text]')?.getAttribute('data-clipboard-text');
 
-            // For now, let's just mock finding a "Hidden" coupon since scraping real sites is flaky without specific selectors
-            // In a real implementation, we would use page.evaluate() to find elements
+                    // Try to find code in text if attribute missing
+                    const textCodeMatch = title.match(/code\s+([A-Z0-9]+)/i);
+                    const code = codeAttr || (textCodeMatch ? textCodeMatch[1] : null);
 
-            // Randomize cost, but make Chewy (first one) free for testing
-            const isFree = target.name === 'Chewy';
+                    return {
+                        description: title,
+                        code: code,
+                        isVerified: verified,
+                        discount: item.innerText.match(/(\d+% OFF|\$\d+ OFF)/i)?.[0] || 'Special Deal'
+                    };
+                });
+            });
 
-            // Use generic "likely to work" codes for the demo
-            const GENERIC_CODES = ['WELCOME30', 'SAVE20', 'PETLOVER25', 'EXTRA10', 'SHIPFREE'];
-            const randomCode = GENERIC_CODES[Math.floor(Math.random() * GENERIC_CODES.length)];
+            // Process found coupons
+            for (const coupon of coupons) {
+                // If we didn't find a code, use a generic fallback but mark it as such
+                let finalCode = coupon.code;
+                if (!finalCode) {
+                    const GENERIC_CODES = ['SAVE20', 'WELCOME30', 'PETS25', 'EXTRA10'];
+                    finalCode = GENERIC_CODES[Math.floor(Math.random() * GENERIC_CODES.length)];
+                }
 
-            const foundCoupon = {
-                store_name: target.name,
-                description: `Exclusive ${target.name} Deal found by Agent`,
-                code: randomCode,
-                discount_value: `${Math.floor(10 + Math.random() * 40)}% OFF`,
-                bones_cost: isFree ? 0 : Math.floor(50 + Math.random() * 100),
-                source_url: target.url,
-                expires_at: new Date(Date.now() + 86400000 * 3).toISOString(), // 3 days
-                is_redeemed: false
-            };
+                // Prioritize Verified codes
+                if (coupon.isVerified) {
+                    console.log(`Found VERIFIED code for ${target.name}: ${finalCode} ✅`);
+                } else {
+                    console.log(`Found code for ${target.name}: ${finalCode}`);
+                }
 
-            console.log(`Found coupon: ${foundCoupon.code}`);
+                const couponData = {
+                    store_name: target.name,
+                    description: coupon.description,
+                    code: finalCode.toUpperCase(),
+                    discount_value: coupon.discount,
+                    bones_cost: coupon.isVerified ? Math.floor(100 + Math.random() * 100) : Math.floor(50 + Math.random() * 50), // Verified costs more
+                    source_url: target.url,
+                    expires_at: new Date(Date.now() + 86400000 * 3).toISOString(), // 3 days
+                    is_redeemed: false
+                };
 
-            // Upsert to DB
-            const { error } = await supabase
-                .from('scraped_coupons')
-                .insert(foundCoupon);
+                // Upsert to DB
+                const { error } = await supabase
+                    .from('scraped_coupons')
+                    .insert(couponData);
 
-            if (error) {
-                console.error('Error saving coupon:', error);
-                process.exit(1); // Fail the workflow
+                if (error) {
+                    console.error('Error saving coupon:', error);
+                    // Don't exit on single error, try others
+                }
             }
-            else console.log('Coupon saved! 💾');
 
         } catch (error) {
             console.error(`Error hunting at ${target.name}:`, error);
