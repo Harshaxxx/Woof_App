@@ -66,7 +66,10 @@ async function hunt() {
                 .from('scraped_coupons')
                 .insert(foundCoupon);
 
-            if (error) console.error('Error saving coupon:', error);
+            if (error) {
+                console.error('Error saving coupon:', error);
+                process.exit(1); // Fail the workflow
+            }
             else console.log('Coupon saved! 💾');
 
         } catch (error) {
