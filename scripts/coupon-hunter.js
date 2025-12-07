@@ -1,4 +1,3 @@
-
 import puppeteer from 'puppeteer';
 import { createClient } from '@supabase/supabase-js';
 
@@ -33,6 +32,21 @@ const TARGETS = [
 
 async function hunt() {
     console.log('Starting Coupon Hunt... 🕵️‍♂️');
+
+    // 1. Cleanup Expired Coupons
+    try {
+        console.log('Cleaning up expired coupons... 🧹');
+        const { error: deleteError } = await supabase
+            .from('scraped_coupons')
+            .delete()
+            .lt('expires_at', new Date().toISOString());
+
+        if (deleteError) console.error('Error cleaning up:', deleteError);
+        else console.log('Expired coupons removed.');
+    } catch (err) {
+        console.error('Cleanup failed:', err);
+    }
+
     const browser = await puppeteer.launch({
         headless: 'new',
         args: ['--no-sandbox', '--disable-setuid-sandbox']
