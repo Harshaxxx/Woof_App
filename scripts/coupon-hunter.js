@@ -78,11 +78,10 @@ async function hunt() {
                 return items.slice(0, 5).map(item => { // Get top 5
                     const title = item.querySelector('.title')?.innerText || item.innerText.split('\n')[0];
                     const verified = item.innerText.includes('Verified');
-                    const codeAttr = item.querySelector('[data-clipboard-text]')?.getAttribute('data-clipboard-text');
 
-                    // Try to find code in text if attribute missing
-                    const textCodeMatch = title.match(/code\s+([A-Z0-9]+)/i);
-                    const code = codeAttr || (textCodeMatch ? textCodeMatch[1] : null);
+                    // NEW SELECTOR: Get text from .code span
+                    const codeSpan = item.querySelector('.code');
+                    const code = codeSpan ? codeSpan.innerText.trim() : null;
 
                     return {
                         description: title,
@@ -95,12 +94,17 @@ async function hunt() {
 
             // Process found coupons
             for (const coupon of coupons) {
-                // If we didn't find a code, use a generic fallback but mark it as such
                 let finalCode = coupon.code;
+
+                // STRICT VALIDATION: If no code found, SKIP IT.
+                // Do NOT use generic fallbacks as they lead to bad user experience.
                 if (!finalCode) {
-                    const GENERIC_CODES = ['SAVE20', 'WELCOME30', 'PETS25', 'EXTRA10'];
-                    finalCode = GENERIC_CODES[Math.floor(Math.random() * GENERIC_CODES.length)];
+                    console.log(`Skipping deal "${coupon.description}" - No code found. ❌`);
+                    continue;
                 }
+
+                // Clean up code (remove spaces, etc)
+                finalCode = finalCode.trim().toUpperCase();
 
                 // Prioritize Verified codes
                 if (coupon.isVerified) {
@@ -112,7 +116,7 @@ async function hunt() {
                 const couponData = {
                     store_name: target.name,
                     description: coupon.description,
-                    code: finalCode.toUpperCase(),
+                    code: finalCode,
                     discount_value: coupon.discount,
                     bones_cost: coupon.isVerified ? Math.floor(100 + Math.random() * 100) : Math.floor(50 + Math.random() * 50), // Verified costs more
                     source_url: target.storeUrl, // Use direct store URL
@@ -127,7 +131,6 @@ async function hunt() {
 
                 if (error) {
                     console.error('Error saving coupon:', error);
-                    // Don't exit on single error, try others
                 } else {
                     // 50% chance to generate a "Loser" card for this store to make it interesting
                     if (Math.random() > 0.5) {
