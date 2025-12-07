@@ -17,7 +17,7 @@ const Marketplace = () => {
     const [loading, setLoading] = useState(true);
     const [activeTab, setActiveTab] = useState('store'); // 'store' | 'hunter' | 'unlocked'
     const [redeemModal, setRedeemModal] = useState(null); // { item, code, type }
-    const [scratchedIds, setScratchedIds] = useState(new Set()); // Track locally scratched cards
+    const [unlockedCardIds, setUnlockedCardIds] = useState(new Set()); // Track unlocked but not fully scratched cards
 
     useEffect(() => {
         if (user) {
@@ -154,21 +154,18 @@ const Marketplace = () => {
         }
     };
 
-    const handleRedeemCoupon = async (coupon) => {
+    const handleUnlockCard = async (coupon) => {
         if (bones < coupon.bones_cost) {
             alert(`You need ${coupon.bones_cost} bones. 🐕`);
             return;
         }
 
-        // No confirm dialog for scratch - the action itself is the confirmation
-        // But maybe a small safety check? "Scratch for 50 bones?"
-        // User said "Like Lotto", usually you buy the ticket first.
-        // Here, scratching IS buying.
-        if (!window.confirm(`Scratch this card for ${coupon.bones_cost} bones?`)) return;
+        if (!window.confirm(`Unlock this card for ${coupon.bones_cost} bones?`)) return;
 
         try {
             // Optimistic update
             setBones(prev => prev - coupon.bones_cost);
+            setUnlockedCardIds(prev => new Set(prev).add(coupon.id));
 
             // 1. Deduct bones
             const { error: walletError } = await supabase
@@ -178,7 +175,7 @@ const Marketplace = () => {
 
             if (walletError) throw walletError;
 
-            // 2. Mark coupon as redeemed
+            // 2. Mark coupon as redeemed immediately (so they own it)
             const { error: couponError } = await supabase
                 .from('scraped_coupons')
                 .update({
@@ -199,33 +196,36 @@ const Marketplace = () => {
                     meta: { coupon_id: coupon.id, store: coupon.store_name }
                 });
 
-            // Mark as scratched locally so it stays revealed
-            setScratchedIds(prev => new Set(prev).add(coupon.id));
-
-            // Handle Winner vs Loser
-            if (coupon.code === 'NO-LUCK') {
-                // It's a dud! 😢
-                // Don't add to unlocked list
-                // Maybe play a sad sound?
-            } else {
-                // It's a winner! 🎉
-                // Add to unlocked list (for the other tab)
-                setUnlockedCoupons(prev => [coupon, ...prev]);
-
-                // Show modal only for winners
-                setRedeemModal({
-                    item: coupon,
-                    code: coupon.code,
-                    type: 'coupon'
-                });
-            }
-
-            // DO NOT remove from coupons list immediately, let the user see what they won (or lost)!
-
         } catch (error) {
-            console.error('Error redeeming coupon:', error);
-            alert(`Redemption failed: ${error.message}`);
+            console.error('Error unlocking card:', error);
+            alert(`Unlock failed: ${error.message}`);
             setBones(prev => prev + coupon.bones_cost);
+            setUnlockedCardIds(prev => {
+                const next = new Set(prev);
+                next.delete(coupon.id);
+                return next;
+            });
+        }
+    };
+
+    const handleRevealCard = (coupon) => {
+        // Called when scratching is complete
+
+        // Handle Winner vs Loser
+        if (coupon.code === 'NO-LUCK') {
+            // It's a dud! 😢
+            // Maybe play a sad sound?
+        } else {
+            // It's a winner! 🎉
+            // Add to unlocked list (for the other tab)
+            setUnlockedCoupons(prev => [coupon, ...prev]);
+
+            // Show modal
+            setRedeemModal({
+                item: coupon,
+                code: coupon.code,
+                type: 'coupon'
+            });
         }
     };
 
@@ -327,7 +327,9 @@ const Marketplace = () => {
                                     cost={coupon.bones_cost}
                                     discount={coupon.discount_value}
                                     description={coupon.description}
-                                    onScratch={() => handleRedeemCoupon(coupon)}
+                                    isUnlocked={unlockedCardIds.has(coupon.id)}
+                                    onUnlock={() => handleUnlockCard(coupon)}
+                                    onReveal={() => handleRevealCard(coupon)}
                                 />
                             ))}
                         </div>
