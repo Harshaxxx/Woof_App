@@ -2,9 +2,10 @@ import React, { useEffect, useState } from 'react';
 import ProductCard from '../components/ProductCard';
 import Card from '../components/Card';
 import Button from '../components/Button';
+import ScratchCard from '../components/ScratchCard';
 import { useAuth } from '../context/AuthContext';
 import { supabase } from '../supabaseClient';
-import { Sparkles, RefreshCw } from 'lucide-react';
+import { Sparkles, RefreshCw, Unlock } from 'lucide-react';
 
 const Marketplace = () => {
     const { user } = useAuth();
@@ -12,14 +13,17 @@ const Marketplace = () => {
     const [bones, setBones] = useState(0);
     const [deals, setDeals] = useState([]);
     const [coupons, setCoupons] = useState([]);
+    const [unlockedCoupons, setUnlockedCoupons] = useState([]);
     const [loading, setLoading] = useState(true);
-    const [activeTab, setActiveTab] = useState('store'); // 'store' | 'hunter'
+    const [activeTab, setActiveTab] = useState('store'); // 'store' | 'hunter' | 'unlocked'
     const [redeemModal, setRedeemModal] = useState(null); // { item, code, type }
+    const [scratchedIds, setScratchedIds] = useState(new Set()); // Track locally scratched cards
 
     useEffect(() => {
         if (user) {
             fetchData();
             fetchCoupons();
+            fetchUnlockedCoupons();
         }
     }, [user]);
 
@@ -28,11 +32,22 @@ const Marketplace = () => {
             setLoading(true);
 
             // 1. Get Profile (Dog Name)
-            const { data: profile } = await supabase
+            let { data: profile } = await supabase
                 .from('profiles')
                 .select('dog_name')
                 .eq('id', user.id)
                 .single();
+
+            if (!profile) {
+                // Auto-fix: Create missing profile
+                console.log('Profile missing, creating one...');
+                await supabase.from('profiles').insert({
+                    id: user.id,
+                    display_name: user.email?.split('@')[0] || 'Friend',
+                    dog_name: 'Buddy'
+                });
+                profile = { dog_name: 'Buddy' };
+            }
 
             if (profile?.dog_name) setDogName(profile.dog_name);
 
@@ -74,6 +89,22 @@ const Marketplace = () => {
             setCoupons(data || []);
         } catch (error) {
             console.error('Error fetching coupons:', error);
+        }
+    };
+
+    const fetchUnlockedCoupons = async () => {
+        try {
+            const { data, error } = await supabase
+                .from('scraped_coupons')
+                .select('*')
+                .eq('redeemed_by', user.id)
+                .neq('code', 'NO-LUCK') // Don't show losers in history
+                .order('created_at', { ascending: false });
+
+            if (error) throw error;
+            setUnlockedCoupons(data || []);
+        } catch (error) {
+            console.error('Error fetching unlocked coupons:', error);
         }
     };
 
@@ -129,7 +160,11 @@ const Marketplace = () => {
             return;
         }
 
-        if (!window.confirm(`Unlock ${coupon.discount_value} at ${coupon.store_name} for ${coupon.bones_cost} bones?`)) return;
+        // No confirm dialog for scratch - the action itself is the confirmation
+        // But maybe a small safety check? "Scratch for 50 bones?"
+        // User said "Like Lotto", usually you buy the ticket first.
+        // Here, scratching IS buying.
+        if (!window.confirm(`Scratch this card for ${coupon.bones_cost} bones?`)) return;
 
         try {
             // Optimistic update
@@ -144,15 +179,13 @@ const Marketplace = () => {
             if (walletError) throw walletError;
 
             // 2. Mark coupon as redeemed
-            const { data: redeemedCoupon, error: couponError } = await supabase
+            const { error: couponError } = await supabase
                 .from('scraped_coupons')
                 .update({
                     is_redeemed: true,
                     redeemed_by: user.id
                 })
-                .eq('id', coupon.id)
-                .select()
-                .single();
+                .eq('id', coupon.id);
 
             if (couponError) throw couponError;
 
@@ -166,18 +199,32 @@ const Marketplace = () => {
                     meta: { coupon_id: coupon.id, store: coupon.store_name }
                 });
 
-            // Remove from list
-            setCoupons(prev => prev.filter(c => c.id !== coupon.id));
+            // Mark as scratched locally so it stays revealed
+            setScratchedIds(prev => new Set(prev).add(coupon.id));
 
-            setRedeemModal({
-                item: redeemedCoupon,
-                code: redeemedCoupon.code,
-                type: 'coupon'
-            });
+            // Handle Winner vs Loser
+            if (coupon.code === 'NO-LUCK') {
+                // It's a dud! 😢
+                // Don't add to unlocked list
+                // Maybe play a sad sound?
+            } else {
+                // It's a winner! 🎉
+                // Add to unlocked list (for the other tab)
+                setUnlockedCoupons(prev => [coupon, ...prev]);
+
+                // Show modal only for winners
+                setRedeemModal({
+                    item: coupon,
+                    code: coupon.code,
+                    type: 'coupon'
+                });
+            }
+
+            // DO NOT remove from coupons list immediately, let the user see what they won (or lost)!
 
         } catch (error) {
             console.error('Error redeeming coupon:', error);
-            alert('Redemption failed.');
+            alert(`Redemption failed: ${error.message}`);
             setBones(prev => prev + coupon.bones_cost);
         }
     };
@@ -214,7 +261,14 @@ const Marketplace = () => {
                     onClick={() => setActiveTab('hunter')}
                     style={{ flex: 1 }}
                 >
-                    Coupon Hunter 🕵️‍♂️
+                    Scratch & Win 🎰
+                </Button>
+                <Button
+                    variant={activeTab === 'unlocked' ? 'primary' : 'ghost'}
+                    onClick={() => setActiveTab('unlocked')}
+                    style={{ flex: 1 }}
+                >
+                    Unlocked 🔓
                 </Button>
             </div>
 
@@ -245,37 +299,70 @@ const Marketplace = () => {
                         </div>
                     )}
                 </div>
-            ) : (
-                /* Coupon Hunter */
+            ) : activeTab === 'hunter' ? (
+                /* Coupon Hunter (Scratch Cards) */
                 <div className="animate-fade-in">
                     <Card style={{ marginBottom: '20px', textAlign: 'center', border: '1px dashed var(--color-primary)' }}>
-                        <h3 style={{ marginBottom: '10px' }}>Freshly Hunted Coupons</h3>
+                        <h3 style={{ marginBottom: '10px' }}>Mystery Scratch Cards</h3>
                         <p className="text-muted" style={{ marginBottom: '15px' }}>
-                            Our AI agent updates this list every 3 hours.
+                            Scratch to reveal exclusive deals!
                         </p>
                         <Button
                             variant="secondary"
                             onClick={fetchCoupons}
                             size="sm"
                         >
-                            <RefreshCw size={14} style={{ marginRight: '6px' }} /> Refresh
+                            <RefreshCw size={14} style={{ marginRight: '6px' }} /> Refresh Cards
                         </Button>
                     </Card>
 
                     {coupons.length === 0 ? (
-                        <p className="text-center text-muted">No coupons found yet. Check back later!</p>
+                        <p className="text-center text-muted">No cards available. Check back later!</p>
+                    ) : (
+                        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(300px, 1fr))', gap: '20px' }}>
+                            {coupons.map(coupon => (
+                                <ScratchCard
+                                    key={coupon.id}
+                                    storeName={coupon.store_name}
+                                    cost={coupon.bones_cost}
+                                    discount={coupon.discount_value}
+                                    description={coupon.description}
+                                    onScratch={() => handleRedeemCoupon(coupon)}
+                                />
+                            ))}
+                        </div>
+                    )}
+                </div>
+            ) : (
+                /* Unlocked Coupons */
+                <div className="animate-fade-in">
+                    <h3 style={{ marginBottom: '15px' }}>Your Unlocked Rewards</h3>
+                    {unlockedCoupons.length === 0 ? (
+                        <p className="text-center text-muted">You haven't unlocked any coupons yet.</p>
                     ) : (
                         <div style={{ display: 'flex', flexDirection: 'column', gap: '15px' }}>
-                            {coupons.map(coupon => (
-                                <Card key={coupon.id} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                                    <div>
-                                        <h4 style={{ color: 'var(--color-primary)', marginBottom: '4px' }}>{coupon.store_name}</h4>
-                                        <p style={{ fontWeight: 'bold', fontSize: '1.1rem' }}>{coupon.discount_value}</p>
-                                        <p className="text-xs text-muted">{coupon.description}</p>
+                            {unlockedCoupons.map(coupon => (
+                                <Card key={coupon.id} style={{ borderLeft: '4px solid var(--color-primary)' }}>
+                                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: '10px' }}>
+                                        <div>
+                                            <h4 style={{ color: 'var(--color-primary)', marginBottom: '4px' }}>{coupon.store_name}</h4>
+                                            <p style={{ fontWeight: 'bold', fontSize: '1.2rem' }}>{coupon.discount_value}</p>
+                                        </div>
+                                        <div style={{ background: 'var(--color-bg)', padding: '5px 10px', borderRadius: '4px', border: '1px solid var(--color-border)' }}>
+                                            <span style={{ fontFamily: 'monospace', fontWeight: 'bold', letterSpacing: '1px' }}>{coupon.code}</span>
+                                        </div>
                                     </div>
-                                    <div style={{ textAlign: 'right' }}>
-                                        <p style={{ fontWeight: 'bold', marginBottom: '8px' }}>{coupon.bones_cost} 🦴</p>
-                                        <Button size="sm" onClick={() => handleRedeemCoupon(coupon)}>Unlock</Button>
+                                    <p className="text-sm text-muted" style={{ marginBottom: '10px' }}>{coupon.description}</p>
+                                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                                        <p className="text-xs text-muted">Expires: {new Date(coupon.expires_at).toLocaleDateString()}</p>
+                                        <a
+                                            href={coupon.source_url}
+                                            target="_blank"
+                                            rel="noopener noreferrer"
+                                            style={{ color: 'var(--color-primary)', textDecoration: 'none', fontSize: '0.9rem', fontWeight: 'bold' }}
+                                        >
+                                            Visit Store &rarr;
+                                        </a>
                                     </div>
                                 </Card>
                             ))}
@@ -284,7 +371,7 @@ const Marketplace = () => {
                 </div>
             )}
 
-            {/* Redemption Modal */}
+            {/* Redemption Modal (Only for Store Deals now) */}
             {redeemModal && (
                 <div style={{
                     position: 'fixed',
@@ -303,7 +390,7 @@ const Marketplace = () => {
                         <div style={{ fontSize: '3rem', marginBottom: '10px' }}>🎉</div>
                         <h2 style={{ color: 'var(--color-primary)' }}>Redeemed!</h2>
                         <p className="text-muted" style={{ marginBottom: '20px' }}>
-                            You unlocked <b>{redeemModal.type === 'deal' ? redeemModal.item.title : redeemModal.item.discount_value}</b>
+                            You unlocked <b>{redeemModal.item.title}</b>
                         </p>
 
                         <div style={{

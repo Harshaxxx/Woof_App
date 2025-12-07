@@ -128,6 +128,21 @@ async function hunt() {
                 if (error) {
                     console.error('Error saving coupon:', error);
                     // Don't exit on single error, try others
+                } else {
+                    // 50% chance to generate a "Loser" card for this store to make it interesting
+                    if (Math.random() > 0.5) {
+                        console.log(`Adding a mystery dud for ${target.name}... 😈`);
+                        await supabase.from('scraped_coupons').insert({
+                            store_name: target.name,
+                            description: 'Mystery Deal',
+                            code: 'NO-LUCK',
+                            discount_value: 'No Prize',
+                            bones_cost: Math.floor(20 + Math.random() * 30), // Cheaper to scratch
+                            source_url: target.storeUrl,
+                            expires_at: new Date(Date.now() + 86400000 * 3).toISOString(),
+                            is_redeemed: false
+                        });
+                    }
                 }
             }
 
