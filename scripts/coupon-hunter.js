@@ -16,16 +16,19 @@ const TARGETS = [
     {
         name: 'Chewy',
         url: 'https://couponfollow.com/site/chewy.com',
+        storeUrl: 'https://www.chewy.com',
         selector: 'article.offer-card',
     },
     {
         name: 'Petco',
         url: 'https://couponfollow.com/site/petco.com',
+        storeUrl: 'https://www.petco.com',
         selector: 'article.offer-card',
     },
     {
         name: 'PetSmart',
         url: 'https://couponfollow.com/site/petsmart.com',
+        storeUrl: 'https://www.petsmart.com',
         selector: 'article.offer-card',
     }
 ];
@@ -112,7 +115,7 @@ async function hunt() {
                     code: finalCode.toUpperCase(),
                     discount_value: coupon.discount,
                     bones_cost: coupon.isVerified ? Math.floor(100 + Math.random() * 100) : Math.floor(50 + Math.random() * 50), // Verified costs more
-                    source_url: target.url,
+                    source_url: target.storeUrl, // Use direct store URL
                     expires_at: new Date(Date.now() + 86400000 * 3).toISOString(), // 3 days
                     is_redeemed: false
                 };
