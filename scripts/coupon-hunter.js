@@ -106,12 +106,13 @@ async function hunt() {
                 // Clean up code (remove spaces, etc)
                 finalCode = finalCode.trim().toUpperCase();
 
-                // Prioritize Verified codes
-                if (coupon.isVerified) {
-                    console.log(`Found VERIFIED code for ${target.name}: ${finalCode} ✅`);
-                } else {
-                    console.log(`Found code for ${target.name}: ${finalCode}`);
+                // STRICTER VALIDATION: Only accept VERIFIED codes
+                if (!coupon.isVerified) {
+                    console.log(`Skipping unverified code for ${target.name}: ${finalCode} ⚠️`);
+                    continue;
                 }
+
+                console.log(`Found VERIFIED code for ${target.name}: ${finalCode} ✅`);
 
                 const couponData = {
                     store_name: target.name,
