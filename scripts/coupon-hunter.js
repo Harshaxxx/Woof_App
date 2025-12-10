@@ -112,6 +112,12 @@ async function hunt() {
                     continue;
                 }
 
+                // FILTER SHORT CODES: Likely partials or errors (e.g., "VE7", "R20")
+                if (finalCode.length < 4) {
+                    console.log(`Skipping short/suspicious code for ${target.name}: ${finalCode} ⚠️`);
+                    continue;
+                }
+
                 console.log(`Found VERIFIED code for ${target.name}: ${finalCode} ✅`);
 
                 const couponData = {
