@@ -113,8 +113,9 @@ async function hunt() {
                 }
 
                 // FILTER SHORT CODES: Likely partials or errors (e.g., "VE7", "R20")
-                if (finalCode.length < 4) {
-                    console.log(`Skipping short/suspicious code for ${target.name}: ${finalCode} ⚠️`);
+                // Relaxed to 3 chars because "U15" and "R20" might be valid for some stores
+                if (finalCode.length < 3) {
+                    console.log(`Skipping very short code for ${target.name}: ${finalCode} ⚠️`);
                     continue;
                 }
 
