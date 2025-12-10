@@ -140,9 +140,9 @@ async function hunt() {
                 if (error) {
                     console.error('Error saving coupon:', error);
                 } else {
-                    // 50% chance to generate a "Loser" card for this store to make it interesting
-                    if (Math.random() > 0.5) {
-                        console.log(`Adding a mystery dud for ${target.name}... 😈`);
+                    // Reduce "Loser" chance to 10% (was 50%) to make it more fun/rewarding
+                    if (Math.random() > 0.9) {
+                        console.log(`Adding a rare mystery dud for ${target.name}... 😈`);
                         await supabase.from('scraped_coupons').insert({
                             store_name: target.name,
                             description: 'Mystery Deal',
